@@ -13,12 +13,32 @@ namespace KP_Stepanyan_PRI_121
     {
         private float lionX = -2.0f;
         private float lionZ = 1.5f;
-        float darkIndex = -0.5f;
-        int alpha = 0;
-        float beta = 0;
+        
+        private float global_time = 0;
 
         private bool isInsideHouse = false;
         private bool isLightOn = false;
+
+        private float cloudOffsetX = 0.0f;
+        private readonly float cloudSpeed = 0.05f;
+
+        private float craneX = 5.0f;
+        private float craneY = -2.0f;
+        private float craneZ = -1.0f;
+        private float wingAngle = 0.0f;
+        private bool wingDirectionUp = true;
+
+        private const float MIN_LION_X = -8.0f; // Минимальная X-координата (влево)
+        private const float MAX_LION_X = 6.0f;  // Максимальная X-координата (вправо)
+        private const float MIN_LION_Z = -8.0f; // Минимальная Z-координата (назад)
+        private const float MAX_LION_Z = 8.0f;
+
+        private const float MIN_CRANE_Y = -3.0f; // Минимальная высота (ближе к земле)
+        private const float MAX_CRANE_Y = 3.0f;
+
+        private float lionHeadSize = 1.7f;     // Стандартный размер головы
+        private bool hasEars = false;          // Флаг наличия ушек
+        private bool isSmallHeadMode = false;
 
         public Form1()
         {
@@ -34,41 +54,9 @@ namespace KP_Stepanyan_PRI_121
             this.KeyPreview = true; // Разрешаем форме обрабатывать события клавиш
             AnT.TabStop = true;
 
-            AnT.MouseClick += (sender, e) =>
-            {
-                // Преобразуем координаты экрана в координаты сцены
-                int viewportX = e.X;
-                int viewportY = AnT.Height - e.Y; // Инвертируем Y
-
-                // Получаем матрицы и viewport
-                int[] viewport = new int[4];
-                double[] modelview = new double[16];
-                double[] projection = new double[16];
-
-                Gl.glGetIntegerv(Gl.GL_VIEWPORT, viewport);
-                Gl.glGetDoublev(Gl.GL_MODELVIEW_MATRIX, modelview);
-                Gl.glGetDoublev(Gl.GL_PROJECTION_MATRIX, projection);
-
-                // Координаты выключателя в 3D пространстве
-                double[] switchPos = { 6.5f, -3.0f, -4.98f };
-
-                // Проецируем 3D координаты в 2D экранные
-                double[] screenPos = new double[3];
-                Glu.gluProject(switchPos[0], switchPos[1], switchPos[2],
-                              modelview, projection, viewport,
-                              out screenPos[0], out screenPos[1], out screenPos[2]);
-
-                // Проверяем попадание в область выключателя
-                float switchSize = 50f; // Размер области клика в пикселях
-                if (Math.Abs(e.X - screenPos[0]) < switchSize &&
-                    Math.Abs(viewportY - screenPos[1]) < switchSize)
-                {
-                    isLightOn = !isLightOn;
-                    RenderScene();
-                }
-            };
             
-
+            
+            RenderTimer.Start();
 
         }
 
@@ -76,11 +64,13 @@ namespace KP_Stepanyan_PRI_121
         {
             // Цвет неба
             Gl.glClearColor(0.5f, 0.8f, 1.0f, 1.0f); // Цвет фона
-            
         }
 
         private void RenderScene()
         {
+
+            Gl.glClear(Gl.GL_COLOR_BUFFER_BIT | Gl.GL_DEPTH_BUFFER_BIT);
+
             if (isInsideHouse)
             {
                 RenderHouseInterior(); // Рисуем интерьер дома
@@ -121,8 +111,10 @@ namespace KP_Stepanyan_PRI_121
                 // Деревья
                 DrawTree(-5.0f, 0.0f, -5.0f);
                 DrawTree(3.0f, 0.0f, -3.0f);
-                DrawTree(-8.0f, 0.0f, 6.0f);
-
+                DrawTree(-8.0f, 0.0f, 1.0f);
+                DrawTree(-5.0f, 0.0f, 6.0f);
+               
+         
                 // Домик
                 DrawHouse(3.0f, 0.0f, 0.0f);
 
@@ -130,13 +122,12 @@ namespace KP_Stepanyan_PRI_121
                 DrawLion(lionX, -1.9f, lionZ);
 
                 // Журавль
-                DrawCrane(5.0f, -2.0f, -1.0f);
+                DrawCrane(craneX, craneY, craneZ);
 
-                DrawFractalCloud(-5.0f, 5.0f, -8.0f, 1.5f, 3);
-                DrawFractalCloud(2.0f, 6.0f, -10.0f, 2.0f, 2);
-                DrawFractalCloud(5.0f, 4.5f, -5.0f, 1.2f, 3);
+                DrawFractalCloud(-5.0f + cloudOffsetX, 5.0f, -8.0f, 1.5f, 3);
+                DrawFractalCloud(2.0f + cloudOffsetX * 0.8f, 6.0f, -10.0f, 2.0f, 2); // Двигается чуть медленнее
+                DrawFractalCloud(5.0f + cloudOffsetX * 1.2f, 4.5f, -5.0f, 1.2f, 3);
 
-               
 
                 AnT.Refresh();
             }
@@ -163,51 +154,61 @@ namespace KP_Stepanyan_PRI_121
             Gl.glPushMatrix();
             Gl.glTranslatef(x, y, z);
 
-            // Тело льва (сфера)
+            // Тело льва
             Gl.glColor3f(0.4f, 0.3f, 0.1f);
-            Gl.glPushMatrix();
-            Gl.glTranslatef(0.0f, 0.0f, 0.0f);
-            Glu.GLUquadric bodyQuadric = Glu.gluNewQuadric();
-            Glu.gluSphere(bodyQuadric, 1.6f, 16, 16); 
-            Gl.glPopMatrix();
+            Glu.GLUquadric body = Glu.gluNewQuadric();
+            Glu.gluSphere(body, 1.6f, 16, 16);
+            Glu.gluDeleteQuadric(body);
 
-            // Голова льва (сфера)
+
+            // Голова льва
             Gl.glColor3f(0.2f, 0.2f, 0.1f);
             Gl.glPushMatrix();
-            Gl.glTranslatef(0.0f, 1.5f, 1.5f); 
-            Glu.gluSphere(bodyQuadric, 1.7f, 16, 16); 
-            Gl.glPopMatrix();
+            Gl.glTranslatef(0.0f, 1.5f, 1.5f);
+            Glu.GLUquadric head = Glu.gluNewQuadric();
+            Glu.gluSphere(head, lionHeadSize, 16, 16);
+            
+
+            // Рисуем ушки если включены
+            if (hasEars && isInsideHouse)
+            {
+                Gl.glColor3f(0.2f, 0.1f, 0.05f); // Темный цвет ушек
+
+                // Левое ухо
+                Gl.glPushMatrix();
+                Gl.glTranslatef(-0.5f, 0.8f, 0.3f);
+                Glu.gluSphere(head, 0.3f, 8, 8);
+                
+
+                // Правое ухо
+                Gl.glPushMatrix();
+                Gl.glTranslatef(1.0f, 0.4f, 0.3f);
+                Glu.gluSphere(head, 0.3f, 8, 8);
+                
+            }
+            
+            Glu.gluDeleteQuadric(head);
 
 
-            // Уши
-            //Gl.glColor3f(0.5f, 0.3f, 0.1f);
-            //Gl.glPushMatrix();
-            //Gl.glTranslatef(-0.8f, 2.0f, 1.5f); // Левое ухо
-            //Glu.gluSphere(bodyQuadric, 0.4f, 8, 8); 
-            //Gl.glPopMatrix();
 
-            //Gl.glPushMatrix();
-            //Gl.glTranslatef(0.8f, 2.0f, 1.5f); // Правое ухо
-            //Glu.gluSphere(bodyQuadric, 0.4f, 8, 8); 
-            //Gl.glPopMatrix();
-
-
-            // Хвост льва (цилиндр)
+            // Хвост льва
             Gl.glColor3f(0.5f, 0.3f, 0.1f);
-            Gl.glPushMatrix();
-            Gl.glTranslatef(0.0f, -1.5f, -1.0f); 
-            Gl.glRotatef(90, 1.0f, 0.0f, 0.0f); 
-            Glu.gluCylinder(bodyQuadric, 0.3f, 0.3f, 2.0f, 8, 8); 
+            
+            Gl.glTranslatef(0.0f, -1.5f, -1.0f);
+            Gl.glRotatef(90, 1.0f, 0.0f, 0.0f);
+            Glu.GLUquadric tail = Glu.gluNewQuadric();
+            Glu.gluCylinder(tail, 0.3f, 0.3f, 2.0f, 8, 8);
+            Glu.gluDeleteQuadric(tail);
             Gl.glPopMatrix();
 
-            Glu.gluDeleteQuadric(bodyQuadric); 
-
-            Gl.glPopMatrix(); 
+            Gl.glPopMatrix();
         }
 
         //Журавль
         private void DrawCrane(float x, float y, float z)
         {
+            bool isOnGround = y <= MIN_CRANE_Y + 0.1f;
+
             Gl.glPushMatrix();
             Gl.glTranslatef(x, y, z); 
 
@@ -234,47 +235,50 @@ namespace KP_Stepanyan_PRI_121
             Glu.gluCylinder(bodyQuadric, 0.05f, 0.0f, 0.3f, 8, 8); 
             Gl.glPopMatrix();
 
-            // Ноги журавля (цилиндры)
-            Gl.glColor3f(0.8f, 0.4f, 0.1f); 
-            Gl.glPushMatrix();
-            Gl.glTranslatef(-0.2f, 0.0f, 0.0f); 
-            Gl.glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
-            Glu.gluCylinder(bodyQuadric, 0.05f, 0.05f, 1.0f, 8, 8); 
-            Gl.glPopMatrix();
+            if (isOnGround)
+            {
+                Gl.glColor3f(0.8f, 0.4f, 0.1f);
+                Gl.glPushMatrix();
+                Gl.glTranslatef(-0.2f, 0.0f, 0.0f);
+                Gl.glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+                Glu.gluCylinder(bodyQuadric, 0.05f, 0.05f, 1.0f, 8, 8);
+                Gl.glPopMatrix();
 
-            Gl.glPushMatrix();
-            Gl.glTranslatef(0.2f, 0.0f, 0.0f); 
-            Gl.glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
-            Glu.gluCylinder(bodyQuadric, 0.05f, 0.05f, 1.0f, 8, 8); 
-            Gl.glPopMatrix();
+                Gl.glPushMatrix();
+                Gl.glTranslatef(0.2f, 0.0f, 0.0f);
+                Gl.glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+                Glu.gluCylinder(bodyQuadric, 0.05f, 0.05f, 1.0f, 8, 8);
+                Gl.glPopMatrix();
+            }
 
             // Крылья журавля (плоские прямоугольники)
-            Gl.glColor3f(0.8f, 0.8f, 0.8f); 
+            Gl.glColor3f(0.8f, 0.8f, 0.8f);
+
+            // Левое крыло
             Gl.glPushMatrix();
-            Gl.glTranslatef(0.5f, 1.0f, 0.0f);
-            Gl.glRotatef(45.0f, 0.0f, 1.0f, 0.0f); 
-            Gl.glBegin(Gl.GL_QUADS);
-            Gl.glVertex3f(-0.1f, 0.0f, -0.3f);
-            Gl.glVertex3f(0.1f, 0.0f, -0.3f);
-            Gl.glVertex3f(0.1f, 0.0f, 0.3f);
-            Gl.glVertex3f(-0.1f, 0.0f, 0.3f);
+            Gl.glTranslatef(-0.5f, 1.0f, 0.0f);
+            Gl.glRotatef(wingAngle, 1.0f, 0.0f, 0.0f);
+            Gl.glBegin(Gl.GL_TRIANGLES);
+            Gl.glVertex3f(0.0f, 0.0f, 0.0f);
+            Gl.glVertex3f(-0.8f, 0.0f, -0.5f);
+            Gl.glVertex3f(-0.8f, 0.0f, 0.5f);
             Gl.glEnd();
             Gl.glPopMatrix();
 
+            // Правое крыло
             Gl.glPushMatrix();
-            Gl.glTranslatef(-0.5f, 1.0f, 0.0f); 
-            Gl.glRotatef(-45.0f, 0.0f, 1.0f, 0.0f); 
-            Gl.glBegin(Gl.GL_QUADS);
-            Gl.glVertex3f(-0.1f, 0.0f, -0.3f);
-            Gl.glVertex3f(0.1f, 0.0f, -0.3f);
-            Gl.glVertex3f(0.1f, 0.0f, 0.3f);
-            Gl.glVertex3f(-0.1f, 0.0f, 0.3f);
+            Gl.glTranslatef(0.5f, 1.0f, 0.0f);
+            Gl.glRotatef(-wingAngle, 1.0f, 0.0f, 0.0f);
+            Gl.glBegin(Gl.GL_TRIANGLES);
+            Gl.glVertex3f(0.0f, 0.0f, 0.0f);
+            Gl.glVertex3f(0.8f, 0.0f, -0.5f);
+            Gl.glVertex3f(0.8f, 0.0f, 0.5f);
             Gl.glEnd();
             Gl.glPopMatrix();
 
             Glu.gluDeleteQuadric(bodyQuadric);
-
             Gl.glPopMatrix();
+
         }
 
 
@@ -306,6 +310,7 @@ namespace KP_Stepanyan_PRI_121
             const float moveStep = 0.5f;
             float newLionX = lionX;
             float newLionZ = lionZ;
+            float newCraneY = craneY;
 
             switch (e.KeyCode)
             {
@@ -321,19 +326,21 @@ namespace KP_Stepanyan_PRI_121
                 case Keys.D:
                     newLionX += moveStep;
                     break;
-                case Keys.T:
-                    if (isLightOn)
-                    {
-                        darkIndex = -0.5f;
-                        isLightOn = false;
-                    }
-                    else
-                    {
-                        darkIndex = 0f;
-                        isLightOn = true;
-                    }
+                case Keys.G:
+                    isLightOn = !isLightOn;
                     break;
+                case Keys.NumPad8:
+                    newCraneY += moveStep;
+                    break;
+                case Keys.NumPad2:
+                    newCraneY -= moveStep;
+                    break;
+
             }
+
+            newLionX = Math.Max(MIN_LION_X, Math.Min(MAX_LION_X, newLionX));
+            newLionZ = Math.Max(MIN_LION_Z, Math.Min(MAX_LION_Z, newLionZ));
+
 
             // Проверяем столкновения
             if (!CheckCollision(newLionX, newLionZ))
@@ -341,6 +348,8 @@ namespace KP_Stepanyan_PRI_121
                 lionX = newLionX;
                 lionZ = newLionZ;
             }
+
+            craneY = Math.Max(MIN_CRANE_Y, Math.Min(MAX_CRANE_Y, newCraneY));
 
             // Перерисовываем сцену с новыми координатами льва
             RenderScene();
@@ -418,49 +427,6 @@ namespace KP_Stepanyan_PRI_121
             Gl.glVertex3f(0.0f, 3.0f, -2.0f);
             Gl.glEnd();
 
-            ////Циферблат
-            //Gl.glPushMatrix();
-            //Gl.glTranslated(90, 199, 55);
-            //Gl.glColor3f(0.72f + darkIndex, 0.79f + darkIndex, 0.25f + darkIndex);
-            ////Gl.glDisable(Gl.GL_DEPTH_TEST);
-            //Gl.glBegin(Gl.GL_QUADS);
-            //Gl.glVertex3d(0, 0, 0);
-            //Gl.glVertex3d(0, 0, 15);
-            //Gl.glVertex3d(15, 0, 15);
-            //Gl.glVertex3d(15, 0, 0);
-            //Gl.glEnd();
-            ////Gl.glEnable(Gl.GL_DEPTH_TEST);
-            //Gl.glPopMatrix();
-
-            ////Стрелки
-            //Gl.glPushMatrix();
-            //Gl.glTranslated(97.5, 197, 62.5);
-            //Gl.glColor3f(0, 0, 0);
-            //Gl.glDisable(Gl.GL_DEPTH_TEST);
-            //Gl.glLineWidth(1f);
-            //Gl.glRotatef(alpha, 0, 1, 0);
-            //Gl.glBegin(Gl.GL_LINES);
-            //Gl.glVertex3d(0, 0, 0);
-            //Gl.glVertex3d(0, 0, 3.5);
-            //Gl.glEnd();
-            //alpha += 12;
-            //Gl.glEnable(Gl.GL_DEPTH_TEST);
-            //Gl.glPopMatrix();
-
-            //Gl.glPushMatrix();
-            //Gl.glTranslated(97.5, 197, 62.5);
-            //Gl.glColor3f(0, 0, 0);
-            //Gl.glDisable(Gl.GL_DEPTH_TEST);
-            //Gl.glLineWidth(2f);
-            //Gl.glRotatef(beta, 0, 1, 0);
-            //Gl.glBegin(Gl.GL_LINES);
-            //Gl.glVertex3d(0, 0, 0);
-            //Gl.glVertex3d(0, 0, 2);
-            //Gl.glEnd();
-            //beta += 1;
-            //Gl.glEnable(Gl.GL_DEPTH_TEST);
-            //Gl.glPopMatrix();
-
             // Дверь
             Gl.glColor3f(0.1f, 0.1f, 0.3f); // Черный цвет двери
             Gl.glBegin(Gl.GL_QUADS);
@@ -524,32 +490,34 @@ namespace KP_Stepanyan_PRI_121
 
         private void DrawFractalCloud(float centerX, float centerY, float centerZ, float size, int detail)
         {
-            Gl.glColor3f(1.0f, 1.0f, 1.0f); // Белый цвет для облака
-            Gl.glBegin(Gl.GL_TRIANGLE_FAN);
+            // Фиксируем Random, чтобы облака не двигались
+            Random rand = new Random(GetCloudSeed(centerX, centerY, centerZ));
 
-            // Центральная точка облака
+            Gl.glColor3f(1.0f, 1.0f, 1.0f);
+            Gl.glBegin(Gl.GL_TRIANGLE_FAN);
             Gl.glVertex3f(centerX, centerY, centerZ);
 
-            // Генерируем точки по окружности с фрактальными вариациями
-            Random rand = new Random();
             for (int i = 0; i <= 360; i += 10)
             {
                 float angle = (float)(i * Math.PI / 180);
                 float radius = size * (0.7f + (float)rand.NextDouble() * 0.3f);
 
-                // Добавляем фрактальную детализацию
                 for (int d = 0; d < detail; d++)
                 {
                     radius *= 0.9f + (float)rand.NextDouble() * 0.2f;
                 }
 
                 float x = centerX + radius * (float)Math.Cos(angle);
-                float y = centerY + radius * (float)Math.Sin(angle) * 0.6f; // Делаем облако немного плоским
-
+                float y = centerY + radius * (float)Math.Sin(angle) * 0.6f;
                 Gl.glVertex3f(x, y, centerZ);
             }
-
             Gl.glEnd();
+        }
+
+        // Генерирует фиксированный seed для облака на основе его позиции
+        private int GetCloudSeed(float x, float y, float z)
+        {
+            return (int)(x * 100 + y * 10 + z);
         }
 
         private void RenderHouseInterior()
@@ -557,15 +525,14 @@ namespace KP_Stepanyan_PRI_121
 
             SetupLighting();
 
-            // Очистка экрана и буфера глубины
+            
             Gl.glClear(Gl.GL_COLOR_BUFFER_BIT | Gl.GL_DEPTH_BUFFER_BIT);
 
-            // Устанавливаем матрицу проекции
+            
             Gl.glMatrixMode(Gl.GL_PROJECTION);
             Gl.glLoadIdentity();
             Glu.gluPerspective(45.0, AnT.Width / (double)AnT.Height, 0.1, 100.0);
 
-            // Устанавливаем модельно-видовую матрицу
             Gl.glMatrixMode(Gl.GL_MODELVIEW);
             Gl.glLoadIdentity();
             Glu.gluLookAt(0, 5, 15, 0, 0, 0, 0, 1, 0);
@@ -599,25 +566,25 @@ namespace KP_Stepanyan_PRI_121
             Gl.glVertex3f(-10.0f, 10.0f, -5.0f);
             Gl.glEnd();
 
-            // Окно (голубое)
+            // Зеркало (голубое)
             Gl.glColor3f(0.2f, 0.6f, 0.8f);
             Gl.glBegin(Gl.GL_QUADS);
             Gl.glVertex3f(-6.0f, -5.0f, -4.99f);
             Gl.glVertex3f(6.0f, -5.0f, -4.99f);
             Gl.glVertex3f(6.0f, 1.0f, -4.99f);
             Gl.glVertex3f(-6.0f, 1.0f, -4.99f);
-            Gl.glEnd();
-
-            float switchX = 6.5f; // Правее окна
-            float switchY = -3.0f; // На уровне середины окна
-            float switchZ = -4.98f; // Почти на той же глубине что и окно
+            Gl.glEnd(); 
+            
+            float switchX = 6.5f; 
+            float switchY = -3.0f; 
+            float switchZ = -4.98f; 
             float switchWidth = 0.5f;
             float switchHeight = 0.8f;
 
             if (isLightOn)
             {
                 // Выключатель в положении "вкл" (горизонтально)
-                Gl.glColor3f(0.9f, 0.9f, 0.6f); // Темно-серый
+                Gl.glColor3f(0.9f, 0.9f, 0.6f); 
                 Gl.glBegin(Gl.GL_QUADS);
                 Gl.glVertex3f(switchX, switchY, switchZ);
                 Gl.glVertex3f(switchX + switchWidth, switchY, switchZ);
@@ -628,7 +595,7 @@ namespace KP_Stepanyan_PRI_121
             else
             {
                 // Выключатель в положении "выкл" (вертикально)
-                Gl.glColor3f(0.4f, 0.4f, 0.4f); // Темно-серый
+                Gl.glColor3f(0.4f, 0.4f, 0.4f);
                 Gl.glBegin(Gl.GL_QUADS);
                 Gl.glVertex3f(switchX, switchY, switchZ);
                 Gl.glVertex3f(switchX + switchHeight / 3, switchY, switchZ);
@@ -638,7 +605,7 @@ namespace KP_Stepanyan_PRI_121
             }
 
             // Рамка выключателя
-            Gl.glColor3f(0.1f, 0.1f, 0.1f); // Черный
+            Gl.glColor3f(0.1f, 0.1f, 0.1f); 
             Gl.glLineWidth(2.0f);
             Gl.glBegin(Gl.GL_LINE_LOOP);
             Gl.glVertex3f(switchX - 0.1f, switchY - 0.1f, switchZ - 0.01f);
@@ -660,7 +627,7 @@ namespace KP_Stepanyan_PRI_121
             DrawLion(0.0f, -4.9f, 1.0f); // Рисуем льва внутри дома
             DrawCrane(3.0f, -2.9f, 5.0f); // Рисуем журавля (парикхмахера)
             DrawTable(-5.0f, -6.0f, 1.5f); // Рисуем стол
-
+            RenderTimer.Start();
             AnT.Refresh();
         }
 
@@ -712,8 +679,6 @@ namespace KP_Stepanyan_PRI_121
             Gl.glVertex3f(x - frameWidth, y + frameHeight, z - 0.01f);
             Gl.glEnd();
         }
-
-        
 
         private void DrawTable(float x, float y, float z)
         {
@@ -774,7 +739,47 @@ namespace KP_Stepanyan_PRI_121
 
         private void RenderTimer_Tick(object sender, EventArgs e)
         {
+            cloudOffsetX += cloudSpeed;
 
+            // Возвращаем облака в начало, когда они уходят за границу
+            if (cloudOffsetX > 20.0f)
+                cloudOffsetX = -20.0f;
+
+            // Анимация крыльев
+            if (wingDirectionUp)
+            {
+                wingAngle += 2.0f;
+                if (wingAngle > 30.0f) wingDirectionUp = false;
+            }
+            else
+            {
+                wingAngle -= 2.0f;
+                if (wingAngle < -30.0f) wingDirectionUp = true;
+            }
+
+            RenderScene();
+
+
+        }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            if (!isInsideHouse) return; // Работает только в доме
+
+            isSmallHeadMode = !isSmallHeadMode; // Переключаем режим
+
+            if (isSmallHeadMode)
+            {
+                lionHeadSize = 1.2f;  // Уменьшенная голова
+                hasEars = true;       // Показываем ушки
+            }
+            else
+            {
+                lionHeadSize = 1.7f;  // Обычный размер
+                hasEars = false;      // Скрываем ушки
+            }
+
+            RenderScene(); // Обновляем отрисовку
         }
     }
 }

@@ -4,8 +4,6 @@ using System.Drawing;
 using System.Windows.Forms;
 using Tao.FreeGlut;
 using Tao.OpenGl;
-using Tao.Platform.Windows;
-using static System.Windows.Forms.LinkLabel;
 
 namespace KP_Stepanyan_PRI_121
 {
@@ -39,7 +37,6 @@ namespace KP_Stepanyan_PRI_121
         private bool isSmallHeadMode = false;
 
         private bool isSharpnessEffectActive = false;
-        private float sharpnessIntensity = 0.3f;
 
         private float vaseRotationAngle = 0.0f; // Угол вращения вазы
         private float vaseRotationSpeed = 1.0f;
@@ -58,14 +55,12 @@ namespace KP_Stepanyan_PRI_121
             this.KeyPreview = true; // Разрешаем форме обрабатывать события клавиш
             AnT.TabStop = true;
 
-
             RenderTimer.Start();
         }
 
         private void SetupScene()
         {
-            // Цвет неба
-            Gl.glClearColor(0.5f, 0.8f, 1.0f, 1.0f); // Цвет фона
+            Gl.glClearColor(0.5f, 0.8f, 1.0f, 1.0f); // Цвет неба
         }
 
         private void RenderScene()
@@ -128,12 +123,11 @@ namespace KP_Stepanyan_PRI_121
                 // Журавль
                 DrawCrane(craneX, craneY, craneZ);
 
+                // Облака
                 DrawFractalCloud(-5.0f + cloudOffsetX, 5.0f, -8.0f, 1.5f, 3);
                 DrawFractalCloud(2.0f + cloudOffsetX * 0.8f, 6.0f, -10.0f, 2.0f, 2); 
                 DrawFractalCloud(5.0f + cloudOffsetX * 1.2f, 4.5f, -5.0f, 1.2f, 3);
-
                 
-
                 AnT.Refresh();
             }
         }
@@ -298,9 +292,7 @@ namespace KP_Stepanyan_PRI_121
 
             Glu.gluDeleteQuadric(bodyQuadric);
             Gl.glPopMatrix();
-
         }
-
 
         //Рисование дерева
         private void DrawTree(float x, float y, float z)
@@ -533,14 +525,14 @@ namespace KP_Stepanyan_PRI_121
         {
             // Точки профиля вазы (X - радиус, Y - высота)
             List<PointF> profilePoints = new List<PointF>
-    {
-        new PointF(0.0f, 0.0f),   // Основание
-        new PointF(0.5f, 0.5f),   // Начало изгиба
-        new PointF(1.2f, 1.5f),   // Самая широкая часть
-        new PointF(0.8f, 2.5f),   // Сужение
-        new PointF(0.4f, 3.0f),   // Горлышко
-        new PointF(0.0f, 3.5f)    // Верх
-    };
+            {
+                new PointF(0.0f, 0.0f),   // Основание
+                new PointF(0.5f, 0.5f),   // Начало изгиба
+                new PointF(1.2f, 1.5f),   // Самая широкая часть
+                new PointF(0.8f, 2.5f),   // Сужение
+                new PointF(0.4f, 3.0f),   // Горлышко
+                new PointF(0.0f, 3.5f)    // Верх
+            };
 
             // Интерполяция для гладкости
             List<PointF> interpolatedPoints = InterpolateLagrange(profilePoints, 30);
@@ -817,9 +809,6 @@ namespace KP_Stepanyan_PRI_121
             if (vaseRotationAngle > 360.0f)
                 vaseRotationAngle -= 360.0f;
 
-
-
-
             RenderScene();
         }
 
@@ -862,11 +851,6 @@ namespace KP_Stepanyan_PRI_121
 
             RenderScene();
         }
-
-        
-
-
-     
 
         private List<PointF> InterpolateLagrange(List<PointF> points, int numPoints)
         {
